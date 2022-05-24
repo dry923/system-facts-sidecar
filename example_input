@@ -1,0 +1,4 @@
+cluster_name:oc get infrastructure cluster -o jsonpath='{.status.infrastructureName}'
+sdn:oc get network.config/cluster -o jsonpath='{.status.networkType}'
+openshift_version:oc version -o json | jq -r '.openshiftVersion'
+platform:oc get infrastructure cluster -o jsonpath='{.status.platformStatus.type}'
