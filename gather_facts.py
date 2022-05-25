@@ -67,6 +67,7 @@ def gatherFacts(args):
         except Exception:
             log.error("Failed to gather data from command \'%s\'", ' '.join(str(x) for x in chunks[1:]))
             log.error("%s",errors.decode())
+            gotValue = False
 
         # Only attempt to write to redis if our command returned 0
         if gotValue is True:
