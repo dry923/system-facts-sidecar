@@ -5,6 +5,7 @@ import sys
 import argparse
 import redis
 import logging
+import time
 from subprocess import PIPE, Popen
 
 # Create basic logger
@@ -23,27 +24,31 @@ def main(argv):
 
     log.setLevel(args.log_level)
 
-    log.info("Waiting for input")
     waitForInput(args)
 
 def waitForInput(args):
-    # Bind to IP and port and wait for the "get" command
-    log.debug("Attempting to connect to port %d", args.port)
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.bind((args.ip, args.port))
-    except:
-        log.error("ERROR: Unable to bind to port %d. Exiting", args.port)
-        exit(1)
-    s.listen()
-    conn, addr = s.accept()
+    # Connect to redis and wait for the "get" value to appear in the system-facts-sidecar key
+    # Once it appears, execute the gatherFacts function and then set the value in our system-facts-sidecar key to done
+    # NOTE: We ignore all other values other than "get" in the system-facts-sidecar key
+    r = redis.Redis(host=args.redis_ip, port=args.redis_port)
+    log.info("Starting waiting for input loop")
     while True:
-        data = conn.recv(1024)
-        if data.decode().strip() == "get":
-            log.info("Recieved get command")
-            gatherFacts(args)
+        redisOut = None
+        try:
+            redisOut = r.get('system-facts-sidecar')
+            # If we get a key that doesn't exist or  unknown key value, ignore it
+            if redisOut == None or redisOut.decode() != "get":
+                time.sleep(2)
+                continue
+            log.info("Recieved get command. Starting to gather facts.")
+            gatherFacts(args,r)
+            log.info("Setting system-facts-sidecar redis key to done")
+            r.set('system-facts-sidecar','done')
+        except Exception:
+            continue
+        time.sleep(2)
 
-def gatherFacts(args):
+def gatherFacts(args, r):
     # Read our input file in key:command format and write data to redis
     # NOTE: we do not exit with a failure when trying to write to redis
     log.info("Attempting to read from input file %s", args.input_file)
@@ -53,7 +58,6 @@ def gatherFacts(args):
         log.error("ERROR: Failed to read input file %s. Exiting", args.input_file)
         exit(1)
 
-    r = redis.Redis(host=args.redis_ip, port=args.redis_port)
 
     for line in inputFile.readlines():
         chunks = line.strip().split(':')
